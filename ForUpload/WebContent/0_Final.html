@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>K-Delivery</title>
+<script src="jquery-3.5.1.js"></script>
+<script	src="https://apis.openapi.sk.com/tmap/jsv2?version=1&appKey=l7xx74ee4a46f54d41f48fa054bc542557fc"></script>
+<script type="text/javascript">									
+	var map;
+	var marker_s, marekr_e;
+	var regionId;
+	var vector_layer;
+	var resultPolygon = [];
+	//위도, 경도 변환 후 담아 놓는 배열
+	var posLon = [];
+	var posLat = [];
+	var str = [];
+	var rawStr;
+	//경로그림정보
+	var drawInfoArr = [];
+	// 페이지가 로딩이 된 후 호출하는 함수입니다.
+	function initTmap() {
+		// 1. 지도 띄우기
+		map = new Tmapv2.Map("map_div", {
+			center : new Tmapv2.LatLng(37.540938, 126.847778),
+			width : "50%",
+			height : "900px",
+			zoom : 17,
+			zoomControl : true,
+			scrollwheel : true
+		});
+		var marker = new Tmapv2.Marker({
+			position: new Tmapv2.LatLng(37.542257,126.841324), //Marker의 중심좌표 설정.
+			map: map //Marker가 표시될 Map 설정..
+		});		
+		marker1 = new Tmapv2.Marker(
+				{
+					icon : "http://tmapapis.sktelecom.com/upload/tmap/marker/pin_b_m_a.png",
+					iconSize : new Tmapv2.Size(24, 38),
+					map : map
+				});
+		
+	// 2. 공간 API 사용요청
+			var searchKeyword = "화곡동";
+			var searchOption = "legalDong";
+			$.ajax({
+				method : "GET",
+				url : "https://apis.openapi.sk.com/tmap/geofencing/regions?version=1&format=json&callback=result",
+				async : false,
+				crossDomain : true,
+				data : {
+					"count" : "20",
+					"categories" : searchOption,//categories,
+					"searchType" : "KEYWORD",
+					"searchKeyword" : searchKeyword,
+					"appKey" : "l7xx74ee4a46f54d41f48fa054bc542557fc",
+				},
+				success : function(response) {
+					console.log(response);
+					if(response){
+						// 3. regionId 얻기
+						var resultRegionsInfo = response.searchRegionsInfo;
+						console.log(resultRegionsInfo);
+						regionId = resultRegionsInfo[0].regionInfo.regionId;
+					}
+					else{
+						alert("잘못된 검색입니다.");
+					}
+				},
+				error : function(request, status, error) {
+					console.log("code:"
+							+ request.status + "\n"
+							+ "message:"
+							+ request.responseText
+							+ "\n" + "error:" + error);
+				}
+			});
+			$.ajax({
+				method : "GET",
+				url : "https://apis.openapi.sk.com/tmap/geofencing/regions/"
+						+ regionId
+						+ "?version=1&format=json&callback=result",
+				async : false,
+				data : {
+					"resCoordType" : "EPSG3857",
+					"appKey" : "l7xx74ee4a46f54d41f48fa054bc542557fc",
+				},
+				success : function(response) {
+					var resultGeometry = response.features[0].geometry;
+					var resultArea = resultGeometry.coordinates[0];
+					var drawInfoArr = [];
+					var polyline_;
+					var positionBounds = new Tmapv2.LatLngBounds(); //맵에 결과물 확인 하기 위한 LatLngBounds객체 생성
+					if (resultPolygon.length > 0) {
+						for(var i in resultPolygon){
+							resultPolygon[i].setMap(null);
+						}
+						resultPolygon = [];
+					}
+					if(resultGeometry.type == "MultiPolygon"){
+						for(var i in resultGeometry.coordinates){
+							drawInfoArr = [];
+							resultArea = resultGeometry.coordinates[i];
+							var resultArea_array = resultArea[0];
+							for(var j in resultArea_array){
+								// 경로들의 결과값(구간)들을 포인트 객체로 변환 
+								var latlng = new Tmapv2.Point(resultArea_array[j][0], resultArea_array[j][1]);
+								// 포인트 객체를 받아 좌표값으로 변환
+								var convertPoint = new Tmapv2.Projection.convertEPSG3857ToWGS84GEO(latlng);
+								// 포인트객체의 정보로 좌표값 변환 객체로 저장
+								var convertChange = new Tmapv2.LatLng(convertPoint._lat, convertPoint._lng);
+								
+								drawInfoArr.push(convertChange);
+								positionBounds.extend(convertChange);
+							}
+							var polygon = new Tmapv2.Polygon({
+								paths: drawInfoArr,
+								strokeColor : "red",
+								fillColor:"green", // 다각형 내부 색상
+								map: map // 지도 객체
+							});
+							resultPolygon.push(polygon);
+						}
+					}
+					else{
+						for(var i in resultArea){
+							// 경로들의 결과값(구간)들을 포인트 객체로 변환 
+							var latlng = new Tmapv2.Point(resultArea[i][0], resultArea[i][1]);
+							// 포인트 객체를 받아 좌표값으로 변환
+							var convertPoint = new Tmapv2.Projection.convertEPSG3857ToWGS84GEO(latlng);
+							// 포인트객체의 정보로 좌표값 변환 객체로 저장
+							var convertChange = new Tmapv2.LatLng(convertPoint._lat, convertPoint._lng);
+							
+							drawInfoArr.push(convertChange);
+							positionBounds.extend(convertChange);
+						}
+						var polygon = new Tmapv2.Polygon({
+							paths: drawInfoArr,
+							strokeColor : "red",
+							fillColor:"pink", // 다각형 내부 색상
+							map: map // 지도 객체
+						});
+						resultPolygon.push(polygon);
+					}
+					map.panToBounds(positionBounds);	// 확장된 bounds의 중심으로 이동시키기
+					map.zoomout();
+				},
+				error : function(request, status, error) {
+					console.log("code:" + request.status + "\n"
+							+ "message:" + request.responseText + "\n"
+							+ "error:" + error);
+				}
+			});	
+			var lon, lat;
+			map.addListener("click",function onClick(evt) {
+								var mapLatLng = evt.latLng;
+								//기존 마커 삭제
+								marker1.setMap(null);
+								var markerPosition = new Tmapv2.LatLng(
+										mapLatLng._lat, mapLatLng._lng);
+								//마커 올리기
+								marker1 = new Tmapv2.Marker(
+										{
+											position : markerPosition,
+											icon : "http://tmapapis.sktelecom.com/upload/tmap/marker/pin_r_m_p.png",
+											iconSize : new Tmapv2.Size(24, 38),
+											map : map
+										});
+								reverseGeo(mapLatLng._lng, mapLatLng._lat);
+							});
+			function reverseGeo(lon, lat) {
+				$.ajax({
+					method : "GET",
+					url : "https://apis.openapi.sk.com/tmap/geo/reversegeocoding?version=1&format=json&callback=result",
+					async : false,
+					data : {
+						"appKey" : "l7xx74ee4a46f54d41f48fa054bc542557fc",
+						"coordType" : "WGS84GEO",
+						"addressType" : "A10",
+						"lon" : lon,
+						"lat" : lat
+					},
+					success : function(response) {
+						// 3. json에서 주소 파싱
+						var arrResult = response.addressInfo;
+						//법정동 마지막 문자 
+						var lastLegal = arrResult.legalDong
+								.charAt(arrResult.legalDong.length - 1);
+						// 새주소
+						newRoadAddr = arrResult.city_do + ' '
+								+ arrResult.gu_gun + ' ';
+						if (arrResult.eup_myun == ''
+								&& (lastLegal == "읍" || lastLegal == "면")) {//읍면
+							newRoadAddr += arrResult.legalDong;
+						} else {
+							newRoadAddr += arrResult.eup_myun;
+						}
+						newRoadAddr += ' ' + arrResult.roadName + ' '
+								+ arrResult.buildingIndex;
+						// 새주소 법정동& 건물명 체크
+						if (arrResult.legalDong != ''
+								&& (lastLegal != "읍" && lastLegal != "면")) {//법정동과 읍면이 같은 경우
+							if (arrResult.buildingName != '') {//빌딩명 존재하는 경우
+								newRoadAddr += (' (' + arrResult.legalDong
+										+ ', ' + arrResult.buildingName + ') ');
+							} else {
+								newRoadAddr += (' (' + arrResult.legalDong + ')');
+							}
+						} else if (arrResult.buildingName != '') {//빌딩명만 존재하는 경우
+							newRoadAddr += (' (' + arrResult.buildingName + ') ');
+						}
+						// 구주소
+						jibunAddr = arrResult.city_do + ' '
+								+ arrResult.gu_gun + ' '
+								+ arrResult.legalDong + ' ' + arrResult.ri
+								+ ' ' + arrResult.bunji;
+						//구주소 빌딩명 존재
+						if (arrResult.buildingName != '') {//빌딩명만 존재하는 경우
+							jibunAddr += (' ' + arrResult.buildingName);
+						}
+						result = "새주소 : " + newRoadAddr + "</br>";
+						result += "지번주소 : " + jibunAddr + "</br>";
+						result += "위경도좌표 : " + lat + ", " + lon;
+						var resultDiv = document.getElementById("result1");
+						resultDiv.innerHTML = result;
+					},
+					error : function(request, status, error) {
+						console.log("code:" + request.status + "\n"
+								+ "message:" + request.responseText + "\n"
+								+ "error:" + error);
+					}
+				});
+			}			
+			
+			
+	};
+	function loadGetAddressFromLonLat() {
+		// TData 객체 생성
+		var tData = new Tmapv2.extension.TData();
+		var optionObj = {
+			coordType: "WGS84GEO"       //응답좌표 타입 옵션 설정 입니다.
+		};
+		var params = {
+			onComplete:onComplete,      //데이터 로드가 성공적으로 완료 되었을때 실행하는 함수 입니다.
+			onProgress:onProgress,      //데이터 로드 중에 실행하는 함수 입니다.
+			onError:onError         //데이터 로드가 실패했을때 실행하는 함수 입니다.
+		};
+		// TData 객체의 지오코딩 함수
+		tData.getGeoFromAddressJson("서울","강서","화곡",$("#1st_add").val(), optionObj, params);
+	};
+	//지오코딩
+	function onComplete() {
+		console.log(this._responseData); //json으로 데이터를 받은 정보들을 콘솔창에서 확인할 수 있습니다.
+		var lon = this._responseData.coordinateInfo.lon;//json으로 데이터를 받은 정보에서 경도정보를 추출합니다.
+		var lat = this._responseData.coordinateInfo.lat;//json으로 데이터를 받은 정보에서 위도정보를 추출합니다.
+		posLon.push(lon);
+		posLat.push(lat);
+		var marker = new Tmapv2.Marker({
+			position : new Tmapv2.LatLng(lat, lon)
+		});
+		marker.setMap(map);
+	};
+	//데이터 로드중 실행하는 함수입니다.
+    function onProgress(){
+    };
+  	//데이터 로드 중 에러가 발생시 실행하는 함수입니다.
+    function onError(){
+        alert("onError");
+    };
+	function markerMaker(){
+		//Marker 객체 생성.
+		var marker = new Tmapv2.Marker({
+			position: new Tmapv2.LatLng($("#2nd_Wdo").val(),$("#2nd_Kdo").val()), //Marker의 중심좌표 설정.
+			map: map //Marker가 표시될 Map 설정..
+		});
+	};	
+	//지번을 경도,위도로 변환해서 posLon, posLat 리스트에 넣은 값을 확인
+	function checkList(){
+		alert(posLon[0]+","+posLon[1]+","+posLon[2]+","+posLon[3]);
+		alert(posLat[0]+","+posLat[1]+","+posLat[2]+","+posLat[3]);
+	};	
+	
+	function addPath(){
+		<!--$("#map_div").empty();-->
+		// 1. 지도 띄우기
+		//map = new Tmapv2.Map("map_div", {
+		//	center: new Tmapv2.LatLng(37.540938, 126.847778),
+		//	width : "70%", // map의 width 설정
+		//	height : "500px", // map의 height 설정	
+		//	zoom : 14,
+		//	zoomControl : true,
+		//	scrollwheel : true
+		//});
+		// 시작, 도착 심볼찍기
+		// 시작
+		//for(var i=0;i<posLon.length;i++) {
+		//	rawStr="";
+		//	for(var j=0;j<4;j++) {
+		//		if(j==0) {
+		//			rawStr+="\"viaPointId\": \"test"+i+"\",";
+		//		}else if(j==1) {
+		//			rawStr+="\"viaPointName\": \"test"+i+"\",";
+		//		}else if(j==2) {
+		//			rawStr+="\"viaX\": "+posLon[i]+",";
+		//		}else if(j==3) {
+		//			rawStr+="\"viaY\": "+posLat[i]+",";
+		//		}
+		//	}
+		//	str.push(rawStr);
+		//}
+		
+		marker_s = new Tmapv2.Marker({
+			position : new Tmapv2.LatLng(37.542257,126.841324),
+			icon : "http://tmapapis.sktelecom.com/upload/tmap/marker/pin_r_m_s.png",
+			iconSize : new Tmapv2.Size(24, 38),
+			map:map
+		});
+		
+		// 도착 
+		marker_e = new Tmapv2.Marker({
+			position : new Tmapv2.LatLng(37.542257,126.841324),
+			icon : "http://tmapapis.sktelecom.com/upload/tmap/marker/pin_r_m_e.png",
+			iconSize : new Tmapv2.Size(24, 38),
+			map:map
+		});
+		
+		//경유지 4개만 점 찍기
+		marker = new Tmapv2.Marker({
+			position : new Tmapv2.LatLng(posLat[0],posLon[0]),
+			icon : "http://tmapapis.sktelecom.com/upload/tmap/marker/pin_b_m_1.png",
+			iconSize : new Tmapv2.Size(24, 38),
+			map:map
+		});
+		
+		marker = new Tmapv2.Marker({
+			position : new Tmapv2.LatLng(posLat[1],posLon[1]),
+			icon : "http://tmapapis.sktelecom.com/upload/tmap/marker/pin_b_m_2.png",
+			iconSize : new Tmapv2.Size(24, 38),
+			map:map
+		});
+		
+		marker = new Tmapv2.Marker({
+			position : new Tmapv2.LatLng(posLat[2],posLon[2]),
+			icon : "http://tmapapis.sktelecom.com/upload/tmap/marker/pin_b_m_3.png",
+			iconSize : new Tmapv2.Size(24, 38),
+			map:map
+		});
+		
+		marker = new Tmapv2.Marker({
+			position : new Tmapv2.LatLng(posLat[3],posLon[3]),
+			icon : "http://tmapapis.sktelecom.com/upload/tmap/marker/pin_b_m_4.png",
+			iconSize : new Tmapv2.Size(24, 38),
+			map:map
+		});
+			
+		var headers = {}; 
+		headers["appKey"]="l7xx74ee4a46f54d41f48fa054bc542557fc";
+		
+		$.ajax({
+			type:"POST",
+			headers : headers,
+			url:"https://apis.openapi.sk.com/tmap/routes/routeOptimization10?version=1&format=json",//
+			async:false,
+			contentType: "application/json",
+			data: JSON.stringify({
+					"reqCoordType": "WGS84GEO",
+					"resCoordType" : "EPSG3857",
+					"startName": "출발",
+					"startX": "126.841324",
+					"startY": "37.542257",
+					"startTime": "202011101300",
+					"endName": "도착",
+					"endX": "126.841324",
+					"endY": "37.542257",
+					"searchOption" : "0",
+					"viaPoints": [
+						{
+					"viaPointId": "test01",
+						"viaPointName": "test01",
+						"viaX": posLon[0],
+						"viaY": posLat[0],
+						},
+						{
+						"viaPointId": "test02",
+						"viaPointName": "test02",
+						"viaX": posLon[1],
+						"viaY": posLat[1],
+						},
+						{
+						"viaPointId": "test03",
+						"viaPointName": "test03",
+						"viaX": posLon[2],
+						"viaY": posLat[2],
+						},
+						{
+						"viaPointId": "test04",
+						"viaPointName": "test04",
+						"viaX": posLon[3],
+						"viaY": posLat[3],
+						}
+					]
+			}),
+			success:function(response){
+				var resultData = response.properties;
+				var resultFeatures = response.features;
+				// 결과 출력
+				var tDistance = "총 거리 : " + (resultData.totalDistance*0.001).toFixed(2) + "km,  ";
+				var tTime = "총 시간 : " + (resultData.totalTime/60).toFixed(1) + "분,  ";
+				var tFare = "총 요금 : " + resultData.totalFare + "원";
+				
+				$("#result").text(tDistance+tTime+tFare);
+
+				for(var i in resultFeatures) {
+					var geometry = resultFeatures[i].geometry;
+					var properties = resultFeatures[i].properties;
+					var polyline_;
+					drawInfoArr = [];
+
+					if(geometry.type == "LineString") {
+						for(var j in geometry.coordinates){
+							// 경로들의 결과값(구간)들을 포인트 객체로 변환 
+							var latlng = new Tmapv2.Point(geometry.coordinates[j][0], geometry.coordinates[j][1]);
+							// 포인트 객체를 받아 좌표값으로 변환
+							var convertPoint = new Tmapv2.Projection.convertEPSG3857ToWGS84GEO(latlng);
+							// 포인트객체의 정보로 좌표값 변환 객체로 저장
+							var convertChange = new Tmapv2.LatLng(convertPoint._lat, convertPoint._lng);
+							drawInfoArr.push(convertChange);
+						}
+						polyline_ = new Tmapv2.Polyline({
+							path : drawInfoArr,
+							strokeColor : "#FF0000",
+							strokeWeight: 6,
+							map : map
+						});
+					}
+				}
+			},
+			error:function(request,status,error){
+				console.log("code:"+request.status+"\n"+"message:"+request.responseText+"\n"+"error:"+error);
+			}
+		});
+	}
+</script>
+</head>
+<body onload="initTmap();"><!-- 맵 생성 실행 -->
+	<div id="map_div" style="float:left"></div>
+
+	<table border="1">
+	    <tr>
+	        <td colspan="3" align="center">주소 입력</td>
+	    </tr>
+	    <tr>
+	        <td>지번 주소 입력</td>
+	        <td align="center">서울특별시 강서구 화곡동</td>
+	        <td><input type="text" id="1st_add" name="1st_add" size="30" maxlength="20"></td>
+	    </tr>
+	    <tr>
+	        <td colspan="3" align="center"><input type="button" id="Register" name="Register" value="위치 입력" onclick="loadGetAddressFromLonLat()"></td>
+	    </tr>
+	<!--<tr>
+	    	<td align="center">위도 경도 구분</td>
+	    	<td align="center">위도</td>
+	    	<td align="center">경도</td>
+	    </tr>
+	    <tr>
+	    	<td>주소 2</td>
+	    	<td><input type="text" id="2nd_Wdo" name="2nd_Wdo" size="30" maxlength="10"></td>
+	    	<td><input type="text" id="2nd_Kdo" name="2nd_Kdo" size="30" maxlength="10"></td>
+	    </tr>
+	    <tr>
+	        <td colspan="3" align="center"><input type="button" id="WdoKdo" name="WdoKdo" value="위도 경도 입력" onclick="markerMaker()"></td>
+		</tr>
+		<tr>
+			<td colspan="3">37.542257, 126.841324</td>
+		</tr>-->
+		<tr>
+			<td><input type="button" id="Check" name="Check" value="리스트확인" onclick="checkList()"></td>
+			<td><input type="button" id="Check" name="Check" value="경로 그리기" onclick="addPath()"></td>
+		</tr>
+		<tr>
+			<td colspan="3" id="result"></td>
+		</tr>
+		<tr>
+			<td colspan="3" id="result1"></td>
+		</tr>
+		<tr>
+			<td colspan="3" id="pathResult"></td>
+		<tr>
+	</table>
+</body>
+</html>
